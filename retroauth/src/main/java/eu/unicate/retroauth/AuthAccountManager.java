@@ -19,8 +19,8 @@ package eu.unicate.retroauth;
 import android.accounts.Account;
 import android.accounts.AccountManager;
 import android.accounts.AccountManagerFuture;
+import android.accounts.AuthenticatorException;
 import android.accounts.OperationCanceledException;
-import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.content.Context;
 import android.content.DialogInterface;
@@ -29,10 +29,13 @@ import android.os.Bundle;
 import android.support.annotation.NonNull;
 import android.support.annotation.Nullable;
 import android.support.v7.app.AlertDialog;
+import android.util.Log;
 
+import java.io.IOException;
 import java.util.ArrayList;
 
-import eu.unicate.retroauth.interfaces.MockableAccountManager;
+import eu.unicate.retroauth.exceptions.AuthenticationCanceledException;
+import eu.unicate.retroauth.interfaces.BaseAccountManager;
 import rx.Observable;
 import rx.Subscriber;
 
@@ -40,7 +43,7 @@ import rx.Subscriber;
  * This class wraps the Android AccountManager and adds some retroauth specific
  * functionality. This is the main helper class, when working with retroauth.
  */
-public final class AuthAccountManager implements MockableAccountManager {
+public final class AuthAccountManager implements BaseAccountManager {
 
 	static final String RETROAUTH_ACCOUNTNAME_KEY = "retroauthActiveAccount";
 	private Context context;
@@ -49,12 +52,13 @@ public final class AuthAccountManager implements MockableAccountManager {
 	/**
 	 * initializes the class with a context and an AccountManager
 	 *
-	 * @param context        the Android Context
+	 * @param context the Android Context
 	 */
 	public AuthAccountManager(Context context) {
 		this.context = context;
 		this.accountManager = AccountManager.get(context);
 	}
+
 	/**
 	 * initializes the class with a context and an AccountManager
 	 *
@@ -151,23 +155,21 @@ public final class AuthAccountManager implements MockableAccountManager {
 	/**
 	 * {@inheritDoc}
 	 */
-	@SuppressLint("CommitPrefEdits")
 	@Nullable
 	@Override
-	public Account setActiveUser(@NonNull String accountName, @NonNull String accountType) {
+	public Account setActiveAccount(@NonNull String accountName, @NonNull String accountType) {
 		SharedPreferences preferences = context.getSharedPreferences(accountType, Context.MODE_PRIVATE);
-		preferences.edit().putString(RETROAUTH_ACCOUNTNAME_KEY, accountName).commit();
+		preferences.edit().putString(RETROAUTH_ACCOUNTNAME_KEY, accountName).apply();
 		return getAccountByName(accountName, accountType);
 	}
 
 	/**
 	 * {@inheritDoc}
 	 */
-	@SuppressLint("CommitPrefEdits")
 	@Override
-	public void resetActiveUser(@NonNull String accountType) {
+	public void resetActiveAccount(@NonNull String accountType) {
 		SharedPreferences preferences = context.getSharedPreferences(accountType, Context.MODE_PRIVATE);
-		preferences.edit().remove(RETROAUTH_ACCOUNTNAME_KEY).commit();
+		preferences.edit().remove(RETROAUTH_ACCOUNTNAME_KEY).apply();
 	}
 
 	/**
@@ -236,7 +238,7 @@ public final class AuthAccountManager implements MockableAccountManager {
 									if (choosenAccount >= accounts.length) {
 										subscriber.onNext(null);
 									} else {
-										setActiveUser(accounts[choosenAccount].name, accountType);
+										setActiveAccount(accounts[choosenAccount].name, accountType);
 										SharedPreferences preferences = context.getSharedPreferences(accountType, Context.MODE_PRIVATE);
 										preferences.edit().putString(RETROAUTH_ACCOUNTNAME_KEY, accounts[choosenAccount].name).apply();
 										subscriber.onNext(accounts[choosenAccount].name);
@@ -261,22 +263,42 @@ public final class AuthAccountManager implements MockableAccountManager {
 	 * {@inheritDoc}
 	 */
 	@Override
-	public String getAuthToken(@Nullable Account account, @NonNull String accountType, @NonNull String tokenType) throws Exception {
-		AccountManagerFuture<Bundle> future;
-		Activity activity = (context instanceof Activity) ? (Activity) context : null;
-		if (account == null) {
-			future = accountManager.addAccount(accountType, tokenType, null, null, activity, null, null);
-		} else {
-			future = accountManager.getAuthToken(account, tokenType, null, activity, null, null);
+	public String getAuthToken(@Nullable Account account, @NonNull String accountType, @NonNull String tokenType) throws AuthenticationCanceledException {
+		try {
+			String token;
+			Activity activity = (context instanceof Activity) ? (Activity) context : null;
+			if (account == null) {
+				token = createAccountAndGetToken(activity, accountType, tokenType);
+			} else {
+				token = getToken(activity, account, tokenType);
+			}
+			if(token == null)
+				throw new OperationCanceledException("user canceled the login!");
+			return token;
+		} catch (AuthenticatorException | OperationCanceledException | IOException e) {
+			throw new AuthenticationCanceledException(e);
 		}
+	}
 
+	private String createAccountAndGetToken(@Nullable Activity activity, @NonNull String accountType, @NonNull String tokenType) throws AuthenticatorException, OperationCanceledException, IOException {
+		AccountManagerFuture<Bundle> future = accountManager.addAccount(accountType, tokenType, null, null, activity, null, null);
+		Bundle result = future.getResult();
+		String accountName = result.getString(AccountManager.KEY_ACCOUNT_NAME);
+		if(accountName != null) {
+			Account account = new Account(result.getString(AccountManager.KEY_ACCOUNT_NAME), result.getString(AccountManager.KEY_ACCOUNT_TYPE));
+			return accountManager.peekAuthToken(account, tokenType);
+		}
+		return null;
+	}
+
+	private String getToken(@Nullable Activity activity, @NonNull Account account, @NonNull String tokenType) throws AuthenticatorException, OperationCanceledException, IOException {
+		// Clear the interrupted flag
+		Thread.interrupted();
+		AccountManagerFuture<Bundle> future = accountManager.getAuthToken(account, tokenType, null, activity, null, null);
 		Bundle result = future.getResult();
 		String token = result.getString(AccountManager.KEY_AUTHTOKEN);
-		// even if the AuthenticationActivity set the KEY_AUTHTOKEN in the result bundle,
-		// it got stripped out by the AccountManager
-		if (token == null) {
-			// try using the newly created account to peek the token
-			token = accountManager.peekAuthToken(new Account(result.getString(AccountManager.KEY_ACCOUNT_NAME), result.getString(AccountManager.KEY_ACCOUNT_TYPE)), tokenType);
+		if(token == null) {
+			token = accountManager.peekAuthToken(account, tokenType);
 		}
 		return token;
 	}

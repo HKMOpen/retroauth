@@ -13,17 +13,14 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
-package eu.unicate.retroauth.interfaces;
+package eu.unicate.retroauth.exceptions;
 
 /**
- * This interface can be used to define a rule to retry a request
+ * This Exception is thrown, when the user cancels the Authentication or
+ * some other error happens. The Reason can be read, on calling {@link AuthenticationCanceledException#getCause()}
  */
-public interface RetryRule {
-	/**
-	 * @param count The amount of failures
-	 * @param error The error that occured
-	 * @return <code>true</code> if you want to retry, <code>false</code> if not
-	 */
-	boolean retry(int count, Throwable error);
+public class AuthenticationCanceledException extends RuntimeException {
+	public AuthenticationCanceledException(Throwable e) {
+		super(e);
+	}
 }

@@ -23,18 +23,20 @@ import android.support.annotation.NonNull;
 import android.support.annotation.Nullable;
 
 import eu.unicate.retroauth.AuthenticationActivity;
+import eu.unicate.retroauth.exceptions.AuthenticationCanceledException;
 
-public interface MockableAccountManager {
+public interface BaseAccountManager {
 	/**
 	 * Gets the currently active account by the account type. The active account name is determined
-	 * by the method {@link #getActiveAccountName(String, boolean)}
+	 * by the method {@link #getActiveAccountName(String, boolean)}. If there's only one account
+	 * this one will be returned, no matter if you reseted the currently active one
 	 *
 	 * @param accountType     Account Type you want to retreive
 	 * @param userInteraction If there is more than one account and there is no
 	 *                        current active account, a user interaction is required to
 	 *                        let the user choose one. If you want to do so, set this to <code>true</code>
 	 *                        else to <code>false</code>.
-	 * @return the Active account or <code>null</code>
+	 * @return the active (or only) Account or <code>null</code> in case there is no account
 	 */
 	@Nullable
 	Account getActiveAccount(@NonNull String accountType, boolean userInteraction);
@@ -80,6 +82,7 @@ public interface MockableAccountManager {
 	 * @param key         Key wiht which you want to request the value
 	 * @return The Value or <code>null</code> if the account or the key does not exist
 	 */
+	@SuppressWarnings("unused")
 	@Nullable
 	String getUserData(@NonNull String accountType, @NonNull String key);
 
@@ -100,14 +103,14 @@ public interface MockableAccountManager {
 	 * @return the active account or <code>null</code> if the account could not be found
 	 */
 	@Nullable
-	Account setActiveUser(@NonNull String accountName, @NonNull String accountType);
+	Account setActiveAccount(@NonNull String accountName, @NonNull String accountType);
 
 	/**
 	 * Unset the active user.
 	 *
 	 * @param accountType The account type where you want to unset it's current
 	 */
-	void resetActiveUser(@NonNull String accountType);
+	void resetActiveAccount(@NonNull String accountType);
 
 	/**
 	 * Starts the Activity to start the login process which adds the account.
@@ -126,9 +129,8 @@ public interface MockableAccountManager {
 	 * @param accountType the accountType to create if there's no account
 	 * @param tokenType   token type you need the token to be
 	 * @return the token
-	 * @throws Exception thrown when the account creation is canceled
+	 * @throws AuthenticationCanceledException thrown when the account creation is canceled
 	 */
 	@Nullable
-	String getAuthToken(@Nullable Account account, @NonNull String accountType, @NonNull String tokenType) throws Exception;
-
+	String getAuthToken(@Nullable Account account, @NonNull String accountType, @NonNull String tokenType) throws AuthenticationCanceledException;
 }

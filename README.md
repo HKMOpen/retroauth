@@ -1,9 +1,9 @@
 # The simple way of calling authenticated requests in retrofit style
-[![Build Status](https://travis-ci.org/Unic8/retroauth.svg?branch=master)](https://travis-ci.org/Unic8/retroauth)
+[![Build Status](https://travis-ci.org/andretietz/retroauth.svg?branch=master)](https://travis-ci.org/andretietz/retroauth)
 ## Dependencies
 * [Retrofit](https://github.com/square/retrofit) 1.9.0
-* [RxJava](https://github.com/ReactiveX/RxJava) 1.0.12
-* appcompat-v7: 22.2.1
+* [RxJava](https://github.com/ReactiveX/RxJava) 1.0.15
+* appcompat-v7: 23.1.0
 
 Min SDK Version: 9
 
@@ -32,10 +32,12 @@ If you call a request method, annotated with the authenticated annotation, it'll
 * Step 3: Sends the actual request
 * Step 4: If the request fails with an 401 (by default, but changeable) it invalidates the used token in the Android AccountManager and continues with step 1.
 
+Sequence Diagrams can be found in the DIAGRAMS.md file
+
 ## How to use it?
 Add it as dependency:
 ```groovy
-compile 'eu.unicate.android:retroauth:1.0.0'
+compile 'eu.unicate.android:retroauth:1.0.4'
 ```
 
 ### 1. Create 3 strings in your strings.xml
@@ -59,12 +61,17 @@ i.e. (see Demo for an example)
 public class LoginActivity extends AuthenticationActivity {
    ...
    private void someLoginMethod() {
-       String user;
-       String token;
-       Bundle additionalUserData; // nullable
-       ... // do login work here and make sure, that you provide at least a user and a token String
-       // the Token type is the one you defined in Step 1
-       finalizeAuthentication(user, getString(R.string.auth_token_type), token, additionalUserData);
+        String user;
+        String token;
+        ... // do login work here and make sure, that you provide at least a user and a token String
+        // the Token type is the one you defined in Step 1
+        Account account = createOrGetAccount(user);
+        storeToken(account, getString(R.string.auth_token_type), token);
+        // add multiple tokens: storeToken(account, getString(R.string.auth_token_type2), token2);
+        // store some additional userdata (optionally)
+        storeUserData(account, "key_for_some_user_data", "very-important-userdata");
+        // finishes the activity and set this account to the "current-active" one
+        finalizeAuthentication(account);
    }
    ...
 }

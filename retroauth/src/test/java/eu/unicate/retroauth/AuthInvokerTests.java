@@ -27,9 +27,11 @@ import org.mockito.runners.MockitoJUnitRunner;
 import java.lang.reflect.Method;
 import java.util.HashMap;
 
+import eu.unicate.retroauth.interceptors.AuthenticationRequestInterceptor;
 import eu.unicate.retroauth.interceptors.TokenInterceptor;
-import eu.unicate.retroauth.interfaces.MockableAccountManager;
-import eu.unicate.retroauth.interfaces.RetryRule;
+import eu.unicate.retroauth.interfaces.BaseAccountManager;
+import eu.unicate.retroauth.strategies.LockingStrategy;
+import eu.unicate.retroauth.strategies.RequestStrategy;
 import rx.Observable;
 import rx.functions.Func0;
 import rx.observers.TestSubscriber;
@@ -42,20 +44,8 @@ import static org.mockito.Mockito.when;
 @RunWith(MockitoJUnitRunner.class)
 public class AuthInvokerTests {
 
-	/**
-	 * This is a slightly different retry rule than the one which is actually used
-	 * as default ({@link AuthRestAdapter#DEFAULT_RETRY_RULE})
-	 * Since I cannot mock retrofit error responses, I used this one instead
-	 */
-	private static final RetryRule RETRY_RULE = new RetryRule() {
-		@Override
-		public boolean retry(int count, Throwable error) {
-			return count <= 1 && "unauthorized".equals(error.getMessage());
-		}
-	};
-
 	@Mock
-	MockableAccountManager authAccountManager;
+	BaseAccountManager authAccountManager;
 
 	@Mock
 	TestService service;
@@ -65,8 +55,14 @@ public class AuthInvokerTests {
 	@Before
 	public void setupTest() {
 		HashMap<Method, ServiceInfo.AuthRequestType> map = new HashMap<>();
-		ServiceInfo info = new ServiceInfo(map, "testAccountType", "testTokenType", TokenInterceptor.BEARER_TOKENINTERCEPTOR);
-		invoker = new AuthInvoker(info, authAccountManager, RETRY_RULE);
+		ServiceInfo info = new ServiceInfo(map, "testAccountType", "testTokenType", new AuthenticationRequestInterceptor(null), TokenInterceptor.BEARER_TOKENINTERCEPTOR);
+		RequestStrategy strategy = new LockingStrategy(info.accountType, info.tokenType, authAccountManager) {
+			@Override
+			protected boolean retry(int count, Throwable error) {
+				return count <= 1 && "unauthorized".equals(error.getMessage());
+			}
+		};
+		invoker = new AuthInvoker(info, authAccountManager, strategy);
 
 	}
 
@@ -86,6 +82,7 @@ public class AuthInvokerTests {
 
 		invoker.invoke(service.request()).subscribe(testSubscriber);
 
+		testSubscriber.awaitTerminalEvent();
 		testSubscriber.assertValue("mocked-result");
 		testSubscriber.assertCompleted();
 	}
@@ -110,7 +107,7 @@ public class AuthInvokerTests {
 				.thenReturn(Observable.just("mocked-result"));
 
 		invoker.invoke(request()).subscribe(testSubscriber);
-
+		testSubscriber.awaitTerminalEvent();
 		testSubscriber.assertValue("mocked-result");
 		testSubscriber.assertCompleted();
 	}
@@ -134,7 +131,7 @@ public class AuthInvokerTests {
 
 		invoker.invoke(request()).subscribe(testSubscriber);
 
-
+		testSubscriber.awaitTerminalEvent();
 		testSubscriber.assertNoValues();
 		testSubscriber.assertError(Exception.class);
 		testSubscriber.assertNotCompleted();
@@ -158,7 +155,7 @@ public class AuthInvokerTests {
 
 		invoker.invoke(request()).subscribe(testSubscriber);
 
-
+		testSubscriber.awaitTerminalEvent();
 		testSubscriber.assertNoValues();
 		testSubscriber.assertError(Exception.class);
 		testSubscriber.assertNotCompleted();
